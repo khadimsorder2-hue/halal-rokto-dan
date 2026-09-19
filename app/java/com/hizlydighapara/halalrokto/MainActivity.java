@@ -1,271 +1,373 @@
 package com.hizlydighapara.halalrokto;
 
-import android.annotation.SuppressLint;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
+import android.content.res.Configuration;
+import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
-import android.webkit.JavascriptInterface;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.widget.Toast;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
-import org.json.JSONObject;
+import java.util.ArrayList;
+import java.util.List;
 
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.util.Scanner;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-/**
- * হালাল রক্ত দান v2.0 — Native shell (WebView + JS bridge)
- * Org: হিজলি দিঘাপাড়া যুব সংঘ • Since 2026 • বাগাতিপাড়া, নাটোর
- */
 public class MainActivity extends Activity {
 
-    private WebView web;
-    private SharedPreferences prefs;
-    private final ExecutorService netPool = Executors.newFixedThreadPool(2);
+    FrameLayout root;
+    LinearLayout contentColumn;   // appbar+screen stack slot
+    FrameLayout screenHost;       // current screen container
+    FrameLayout sheetHost;        // bottom sheet overlay
+    LinearLayout toastHost;       // toast bar slot
+    LinearLayout bottomNav;
 
-    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    int statusBarH = 0, navBarH = 0;
+    String currentScreen = "";
+    final List<String> backStack = new ArrayList<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        D.init(this);
+        Data.init(this);
+        Ui.host = this;
+        D.setDark(Data.s.themeDark);
 
-        prefs = getSharedPreferences("halal_rokto_dan", MODE_PRIVATE);
+        buildRoot();
 
-        web = new WebView(this);
-        web.setBackgroundColor(0xFF9E1710);
+        if (!Data.s.onboardingDone) go("onboarding", true);
+        else if (Data.s.session == null) go("auth", true);
+        else go("home", true);
+    }
 
-        WebSettings s = web.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setDatabaseEnabled(true);
-        s.setAllowFileAccess(true);
-        s.setAllowContentAccess(true);
-        s.setCacheMode(WebSettings.LOAD_DEFAULT);
-        s.setSupportZoom(false);
-        s.setDisplayZoomControls(false);
-        s.setMediaPlaybackRequiresUserGesture(true);
-        s.setGeolocationEnabled(false);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setJavaScriptCanOpenWindowsAutomatically(false);
-        s.setSupportMultipleWindows(false);
+    /* ── Root chrome ────────────────────────────────────────── */
+    void buildRoot() {
+        root = new FrameLayout(this);
+        root.setBackgroundColor(D.bg);
 
-        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        web.setHorizontalScrollBarEnabled(false);
-        web.setVerticalScrollBarEnabled(false);
+        contentColumn = Ui.v(this);
+        contentColumn.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        web.addJavascriptInterface(new Bridge(), "Android");
+        screenHost = new FrameLayout(this);
+        screenHost.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        contentColumn.addView(screenHost);
 
-        web.setWebViewClient(new AppWebClient(this));
-        web.setWebChromeClient(new AppChromeClient());
+        bottomNav = buildBottomNav();
+        contentColumn.addView(bottomNav);
 
-        setContentView(web);
+        root.addView(contentColumn);
 
-        if (savedInstanceState == null) {
-            web.loadUrl("file:///android_asset/www/index.html");
+        sheetHost = new FrameLayout(this);
+        sheetHost.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        sheetHost.setClickable(true);
+        sheetHost.setVisibility(View.GONE);
+        root.addView(sheetHost);
+
+        toastHost = Ui.v(this);
+        toastHost.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        toastHost.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
+        root.addView(toastHost);
+
+        setContentView(root);
+        applyInsets();
+    }
+
+    void applyInsets() {
+        statusBarH = getResDim("status_bar_height");
+        navBarH = hasNavigationBar() ? getResDim("navigation_bar_height") : 0;
+        int navMode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        boolean sysDark = navMode == Configuration.UI_MODE_NIGHT_YES;
+        Window w = getWindow();
+        if (Build.VERSION.SDK_INT >= 30) {
+            w.setDecorFitsSystemWindows(false);
+            w.setStatusBarColor(Color.TRANSPARENT);
+            w.setNavigationBarColor(Color.TRANSPARENT);
         } else {
-            web.restoreState(savedInstanceState);
+            w.setStatusBarColor(D.dark ? 0xFF191111 : 0xFF9E1710);
+            w.setNavigationBarColor(D.dark ? 0xFF191111 : 0xFFFCF8F8);
+        }
+        setLightStatus(!D.dark);
+    }
+
+    boolean hasNavigationBar() {
+        int id = getResources().getIdentifier("config_show_navigation_bar", "bool", "android");
+        return id == 0 || getResources().getBoolean(id);
+    }
+
+    int getResDim(String name) {
+        int id = getResources().getIdentifier(name, "dimen", "android");
+        return id > 0 ? getResources().getDimensionPixelSize(id) : D.dp(28);
+    }
+
+    void setLightStatus(boolean light) {
+        View d = getWindow().getDecorView();
+        int flags = d.getSystemUiVisibility();
+        if (Build.VERSION.SDK_INT >= 23) {
+            if (light) flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            else flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+        }
+        if (Build.VERSION.SDK_INT < 30) flags |= View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        d.setSystemUiVisibility(flags);
+    }
+
+    /* ── Bottom navigation ──────────────────────────────────── */
+    LinearLayout buildBottomNav() {
+        LinearLayout nav = Ui.h(this);
+        nav.setGravity(Gravity.CENTER_VERTICAL);
+        nav.setPadding(D.dp(6), D.dp(8), D.dp(6), D.dp(8));
+        nav.setBackgroundColor(D.bg);
+        nav.setVisibility(View.GONE);
+
+        String[][] tabs = {
+                {"home", "হোম"}, {"stock", "স্টক"}, {"emergency", "জরুরি"}, {"donors", "ডোনার"}, {"more", "আরও"}
+        };
+        for (final String[] tab : tabs) {
+            LinearLayout item = Ui.v(this);
+            item.setGravity(Gravity.CENTER_HORIZONTAL);
+            item.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            FrameLayout iconSlot = new FrameLayout(this);
+            iconSlot.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, D.dp(30)));
+            int resId = tab[0].equals("home") ? R.drawable.ic_home
+                    : tab[0].equals("stock") ? R.drawable.ic_bloodbank
+                    : tab[0].equals("emergency") ? R.drawable.ic_sos
+                    : tab[0].equals("donors") ? R.drawable.ic_people
+                    : R.drawable.ic_grid;
+            ImageView iv = Ui.icon(this, resId, 22, D.onSurfaceVar);
+            iv.setLayoutParams(Ui.flp(D.dp(22), D.dp(22), Gravity.CENTER));
+            iconSlot.addView(iv);
+            item.addView(iconSlot);
+
+            TextView label = Ui.txt(this, tab[1], 10f, D.onSurfaceVar, 600);
+            label.setGravity(Gravity.CENTER);
+            label.setPadding(0, D.dp(3), 0, 0);
+            item.addView(label);
+
+            item.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    haptic(8);
+                    go(tab[0], true);
+                }
+            });
+            item.setTag(tab[0]);
+            nav.addView(item);
+        }
+        return nav;
+    }
+
+    void updateNav() {
+        boolean showNav = currentScreen.equals("home") || currentScreen.equals("stock")
+                || currentScreen.equals("emergency") || currentScreen.equals("donors")
+                || currentScreen.equals("more");
+        bottomNav.setVisibility(showNav ? View.VISIBLE : View.GONE);
+        int navPad = showNav ? navBarH - D.dp(8) : 0;
+        if (navPad < 0) navPad = 0;
+        bottomNav.setPadding(D.dp(6), D.dp(8), D.dp(6), D.dp(8) + navPad);
+        int count = bottomNav.getChildCount();
+        for (int i = 0; i < count; i++) {
+            LinearLayout item = (LinearLayout) bottomNav.getChildAt(i);
+            String tag = (String) item.getTag();
+            boolean active = tag.equals(currentScreen);
+            FrameLayout slot = (FrameLayout) item.getChildAt(0);
+            ImageView iv = (ImageView) slot.getChildAt(0);
+            TextView label = (TextView) item.getChildAt(1);
+            iv.setColorFilter(active ? D.onPrimary : D.onSurfaceVar);
+            label.setTextColor(active ? D.primary : D.onSurfaceVar);
+            label.setTypeface(active ? D.tfBold : D.tfMedium);
+            if (active) {
+                slot.setBackground(D.round(D.primaryC, 50));
+                slot.getLayoutParams().height = D.dp(30);
+            } else slot.setBackground(null);
         }
     }
 
-    @Override
-    protected void onSaveInstanceState(Bundle outState) {
-        super.onSaveInstanceState(outState);
-        web.saveState(outState);
+    /* ── Navigation ─────────────────────────────────────────── */
+    public void go(String screen, boolean reset) {
+        if (screen.equals(currentScreen)) return;
+        if (reset) backStack.clear();
+        else if (currentScreen.length() > 0) backStack.add(currentScreen);
+
+        currentScreen = screen;
+        View v = buildScreen(screen);
+        if (v == null) return;
+        v.setPadding(0, statusBarH, 0, 0);
+
+        final View old = screenHost.getChildAt(0);
+        screenHost.addView(v);
+        if (old != null) {
+            v.setTranslationX(D.dp(40));
+            v.setAlpha(0f);
+            v.animate().translationX(0).alpha(1f).setDuration(230)
+                    .setInterpolator(new DecelerateInterpolator()).start();
+            old.animate().translationX(-D.dp(26)).alpha(0f).setDuration(230)
+                    .setInterpolator(new DecelerateInterpolator())
+                    .withEndAction(new Runnable() {
+                        public void run() { screenHost.removeView(old); }
+                    }).start();
+        }
+        updateNav();
+    }
+
+    public void back() {
+        if (backStack.isEmpty()) { moveTaskToBack(true); return; }
+        String prev = backStack.remove(backStack.size() - 1);
+        currentScreen = "";
+        go(prev, false);
     }
 
     @Override
     public void onBackPressed() {
-        if (web != null) {
-            // delegate to the web router: closes sheets first, then navigates back
-            web.evaluateJavascript("(function(){try{window.dispatchEvent(new Event('androidback'));}catch(e){}})()", null);
-        } else {
-            super.onBackPressed();
+        if (sheetHost.getVisibility() == View.VISIBLE && sheetHost.getChildCount() > 0) {
+            View overlay = sheetHost.getChildAt(0);
+            if (overlay instanceof FrameLayout) {
+                View panel = ((FrameLayout) overlay).findViewWithTag("panel");
+                if (panel != null) { closeSheet((FrameLayout) overlay, (LinearLayout) panel); return; }
+            }
         }
+        if (backStack.isEmpty()) { moveTaskToBack(true); return; }
+        String prev = backStack.remove(backStack.size() - 1);
+        currentScreen = "";
+        go(prev, false);
     }
 
-    private void openExternal(String url) {
-        try {
-            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(i);
-        } catch (Exception e) {
-            Toast.makeText(this, "এই লিংক খোলার কোনো অ্যাপ পাওয়া যায়নি", Toast.LENGTH_SHORT).show();
-        }
+    View buildScreen(String id) {
+        Context c = this;
+        if (id.equals("onboarding")) return ScrOnboard.build(c);
+        if (id.equals("auth")) return ScrAuth.build(c);
+        if (id.equals("home")) return ScrHome.build(c);
+        if (id.equals("stock")) return ScrStock.build(c);
+        if (id.equals("emergency")) return ScrEmergency.build(c);
+        if (id.equals("donors")) return ScrDonors.build(c);
+        if (id.equals("ranking")) return ScrRanking.build(c);
+        if (id.equals("history")) return ScrHistory.build(c);
+        if (id.equals("donorcard")) return ScrDonorCard.build(c);
+        if (id.equals("notifs")) return ScrNotifs.build(c);
+        if (id.equals("referral")) return ScrReferral.build(c);
+        if (id.equals("more")) return ScrMore.build(c);
+        if (id.equals("profile")) return ScrProfile.build(c);
+        if (id.equals("settings")) return ScrSettings.build(c);
+        if (id.equals("about")) return ScrAbout.build(c);
+        return null;
     }
 
-    private void vibrate(int ms) {
+    /* ── Sheet & toast plumbing ─────────────────────────────── */
+    public void openSheet(final FrameLayout overlay, final LinearLayout panel) {
+        sheetHost.removeAllViews();
+        sheetHost.addView(overlay, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        sheetHost.setVisibility(View.VISIBLE);
+        overlay.setAlpha(0f);
+        overlay.animate().alpha(1f).setDuration(180).start();
+        panel.setTranslationY(panel.getHeight() == 0 ? D.dp(600) : panel.getHeight());
+        panel.post(new Runnable() {
+            public void run() {
+                panel.setTranslationY(panel.getHeight() + D.dp(40));
+                panel.animate().translationY(0).setDuration(300)
+                        .setInterpolator(new DecelerateInterpolator(1.1f)).start();
+            }
+        });
+    }
+
+    public void closeSheet(final FrameLayout overlay, final LinearLayout panel) {
+        panel.animate().translationY(panel.getHeight() + D.dp(60)).setDuration(240)
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .withEndAction(new Runnable() {
+                    public void run() {
+                        sheetHost.removeAllViews();
+                        sheetHost.setVisibility(View.GONE);
+                    }
+                }).start();
+        overlay.animate().alpha(0f).setDuration(240).start();
+    }
+
+    public void showToast(final View bar) {
+        toastHost.removeAllViews();
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        p.setMargins(D.dp(14), statusBarH + D.dp(10), D.dp(14), 0);
+        bar.setLayoutParams(p);
+        toastHost.addView(bar);
+        bar.setTranslationY(-D.dp(80));
+        bar.setAlpha(0f);
+        bar.animate().translationY(0).alpha(1f).setDuration(260)
+                .setInterpolator(new DecelerateInterpolator()).start();
+        bar.postDelayed(new Runnable() {
+            public void run() {
+                bar.animate().alpha(0f).setDuration(300)
+                        .withEndAction(new Runnable() {
+                            public void run() { toastHost.removeView(bar); }
+                        }).start();
+            }
+        }, 2600);
+    }
+
+    /* ── Platform helpers ───────────────────────────────────── */
+    public void haptic(int ms) {
         try {
-            Vibrator v = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+            Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
             if (v == null) return;
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                v.vibrate(VibrationEffect.createOneShot(Math.max(1, ms), VibrationEffect.DEFAULT_AMPLITUDE));
-            } else {
-                v.vibrate(ms);
-            }
-        } catch (Exception ignored) {
+            if (Build.VERSION.SDK_INT >= 26)
+                v.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE));
+            else v.vibrate(ms);
+        } catch (Exception ignored) {}
+    }
+
+    public void dial(String phone) {
+        try {
+            startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + phone)));
+        } catch (Exception e) {
+            Ui.toast("ডায়াল করা যায়নি: " + phone, true);
         }
     }
 
-    /* ── Named clients (avoid anonymous classes: d8 build-tools 34 NPE) ── */
-
-    private static class AppWebClient extends WebViewClient {
-        private final MainActivity host;
-
-        AppWebClient(MainActivity host) { this.host = host; }
-
-        @Override
-        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-            Uri u = request.getUrl();
-            String scheme = u.getScheme() == null ? "" : u.getScheme();
-            if ("http".equals(scheme) || "https".equals(scheme)) {
-                host.openExternal(u.toString());
-                return true;
-            }
-            if ("tel".equals(scheme) || "mailto".equals(scheme) || "sms".equals(scheme)
-                    || "whatsapp".equals(scheme) || "geo".equals(scheme) || "market".equals(scheme) || "intent".equals(scheme)) {
-                host.openExternal(u.toString());
-                return true;
-            }
-            return false; // file:// loads inside
+    public void share(String text, String title) {
+        try {
+            Intent i = new Intent(Intent.ACTION_SEND);
+            i.setType("text/plain");
+            i.putExtra(Intent.EXTRA_TEXT, text);
+            i.putExtra(Intent.EXTRA_TITLE, title);
+            startActivity(Intent.createChooser(i, title));
+        } catch (Exception e) {
+            Ui.toast("শেয়ার করা যায়নি", true);
         }
     }
 
-    private static class AppChromeClient extends WebChromeClient {
-        @Override
-        public boolean onConsoleMessage(android.webkit.ConsoleMessage cm) {
-            return true; // swallow logs in release
-        }
+    /** Rebuild current screen after theme/data change. */
+    public void refresh() {
+        View old = screenHost.getChildAt(0);
+        if (old != null) screenHost.removeView(old);
+        String cur = currentScreen;
+        currentScreen = "";
+        go(cur, false);
     }
 
-    /* ── JavaScript bridge ─────────────────────────────────── */
-    private class Bridge {
-
-        @JavascriptInterface
-        public void toast(final String msg) {
-            runOnUiThread(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show());
-        }
-
-        @JavascriptInterface
-        public void share(final String text, final String title) {
-            runOnUiThread(() -> {
-                try {
-                    Intent i = new Intent(Intent.ACTION_SEND);
-                    i.setType("text/plain");
-                    i.putExtra(Intent.EXTRA_TEXT, text == null ? "" : text);
-                    String t = (title == null || title.isEmpty()) ? "শেয়ার করুন" : title;
-                    i.putExtra(Intent.EXTRA_TITLE, t);
-                    i.putExtra(Intent.EXTRA_SUBJECT, t);
-                    startActivity(Intent.createChooser(i, t));
-                } catch (Exception ignored) {
-                }
-            });
-        }
-
-        @JavascriptInterface
-        public void vibrate(int ms) {
-            MainActivity.this.vibrate(ms);
-        }
-
-        @JavascriptInterface
-        public String getPref(String key) {
-            return prefs.getString(key, null);
-        }
-
-        @JavascriptInterface
-        public void setPref(String key, String value) {
-            prefs.edit().putString(key, value == null ? "" : value).apply();
-        }
-
-        @JavascriptInterface
-        public String appVersion() {
-            return "2.0.0";
-        }
-
-        @JavascriptInterface
-        public String orgName() {
-            return "হিজলি দিঘাপাড়া যুব সংঘ";
-        }
-
-        @JavascriptInterface
-        public void exitApp() {
-            runOnUiThread(() -> finish());
-        }
-
-        @JavascriptInterface
-        public void http(final String method, final String urlStr, final String body, final String cbId) {
-            netPool.execute(() -> {
-                int status = 0;
-                String resp = "";
-                HttpURLConnection conn = null;
-                try {
-                    URL url = new URL(urlStr);
-                    conn = (HttpURLConnection) url.openConnection();
-                    conn.setConnectTimeout(10000);
-                    conn.setReadTimeout(10000);
-                    conn.setRequestMethod(method == null ? "GET" : method.toUpperCase());
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    conn.setRequestProperty("Accept", "application/json");
-                    conn.setInstanceFollowRedirects(true);
-                    String m = conn.getRequestMethod();
-                    if (body != null && !body.isEmpty() && !("GET".equals(m) || "HEAD".equals(m))) {
-                        conn.setDoOutput(true);
-                        try (OutputStream os = conn.getOutputStream()) {
-                            os.write(body.getBytes(StandardCharsets.UTF_8));
-                        }
-                    }
-                    status = conn.getResponseCode();
-                    java.io.InputStream in = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream();
-                    if (in == null) {
-                        resp = "";
-                    } else {
-                        Scanner sc = new Scanner(in, "UTF-8").useDelimiter("\\A");
-                        resp = sc.hasNext() ? sc.next() : "";
-                    }
-                } catch (Exception e) {
-                    status = -1;
-                    try {
-                        resp = new JSONObject().put("error", String.valueOf(e.getMessage())).toString();
-                    } catch (Exception ignored) {
-                        resp = "{}";
-                    }
-                } finally {
-                    if (conn != null) conn.disconnect();
-                }
-                final int st = status;
-                final String rp = resp;
-                runOnUiThread(() -> {
-                    try {
-                        String safe = JSONObject.quote(rp == null ? "" : rp);
-                        web.evaluateJavascript(
-                                "(function(){try{window.__syncDone('" + cbId + "'," + st + "," + safe + ")}catch(e){}})()", null);
-                    } catch (Exception ignored) {
-                    }
-                });
-            });
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        netPool.shutdown();
-        if (web != null) {
-            web.removeJavascriptInterface("Android");
-            web.destroy();
-            web = null;
-        }
-        super.onDestroy();
+    /** Rebuild everything after dark-mode toggle. */
+    public void applyTheme() {
+        D.setDark(Data.s.themeDark);
+        root.setBackgroundColor(D.bg);
+        applyInsets();
+        refresh();
     }
 }
