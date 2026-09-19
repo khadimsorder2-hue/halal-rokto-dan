@@ -444,7 +444,7 @@ public final class Ui {
             final EditText fet = et;
             et.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
-                    long init = value != null && value.length() == 10 ? Bn.parseYmd(value) : System.currentTimeMillis();
+                    long init = fet.getTag() != null ? Bn.parseYmd((String) fet.getTag()) : System.currentTimeMillis();
                     Calendar cc = new GregorianCalendar();
                     cc.setTimeInMillis(init);
                     DatePickerDialog dlg = new DatePickerDialog(c, new DatePickerDialog.OnDateSetListener() {
@@ -563,6 +563,7 @@ public final class Ui {
         panel.setBackground(D.roundStroke(D.surfaceCLo, 26, D.outlineVar, 1));
         panel.setElevation(D.dp(12));
         panel.setTag("panel");
+        panel.setClickable(true); // consume taps inside sheet — don't close through scrim
 
         // drag handle
         View handle = new View(c);
@@ -660,7 +661,9 @@ public final class Ui {
 
     /* ── Confirm dialog ─────────────────────────────────────── */
     public static void confirm(Context c, String title, String msg, String okLabel, boolean danger, final Runnable onOk) {
-        AlertDialog.Builder b = new AlertDialog.Builder(c, android.R.style.Theme_Material_Light_Dialog_Alert);
+        int style = D.dark ? android.R.style.Theme_Material_Dialog_Alert
+                : android.R.style.Theme_Material_Light_Dialog_Alert;
+        AlertDialog.Builder b = new AlertDialog.Builder(c, style);
         b.setTitle(title);
         b.setMessage(msg);
         b.setPositiveButton(okLabel, new DialogInterface.OnClickListener() {
