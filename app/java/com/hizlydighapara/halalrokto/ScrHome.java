@@ -72,6 +72,13 @@ public final class ScrHome {
         /* ── cooldown card ── */
         root.addView(cooldownCard(c, me, cd));
 
+        /* ── এখনই দিতে পারবেন — উদযাপন ব্যানার ── */
+        if (cd.eligible && !cd.first) root.addView(eligibleBanner(c));
+
+        /* ── পরবর্তী ইভেন্ট ব্যানার ── */
+        Data.Event nx = Data.nextEvent();
+        if (nx != null) root.addView(eventBanner(c, nx));
+
         /* ── quick actions ── */
         root.addView(Ui.sectionHeader(c, "দ্রুত সেবা"));
         LinearLayout qg = Ui.h(c);
@@ -219,6 +226,78 @@ public final class ScrHome {
         });
         l.addView(person);
         return l;
+    }
+
+    /** "আপনি এখন রক্ত দিতে পারবেন" — সবুজ উদযাপন ব্যানার। */
+    static LinearLayout eligibleBanner(final Context c) {
+        LinearLayout card = Ui.h(c);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(D.dp(16), D.dp(13), D.dp(10), D.dp(13));
+        card.setBackground(D.gradAngle(new int[]{0xFF2E7D32, 0xFF1E6B33, 0xFF14572A}, 18, 315));
+        card.setElevation(D.dp(4));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        p.setMargins(D.dp(16), D.dp(12), D.dp(16), 0);
+        card.setLayoutParams(p);
+
+        Views.PulseView dot = new Views.PulseView(c);
+        dot.setLayoutParams(Ui.lp(D.dp(13), D.dp(13)));
+        card.addView(dot);
+        ((LinearLayout.LayoutParams) dot.getLayoutParams()).rightMargin = D.dp(12);
+
+        LinearLayout tv = Ui.v(c);
+        tv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        tv.addView(Ui.txt(c, "🎉 আপনি এখন রক্ত দিতে পারবেন!", 14, 0xFFFFFFFF, 700));
+        TextView sub = Ui.txt(c, "৯০ দিন পূর্ণ — কারও জীবন বাঁচানোর সুযোগ", 11.5f, D.withAlpha(0xFFFFFFFF, 225), 500);
+        sub.setPadding(0, D.dp(2), 0, 0);
+        tv.addView(sub);
+        card.addView(tv);
+
+        TextView go = Ui.btnSmall(c, "দান করুন", Ui.BTN_TEXT, new Runnable() {
+            public void run() { Ui.host.go("history", false); }
+        });
+        go.setTextColor(0xFFFFFFFF);
+        card.addView(go);
+        return card;
+    }
+
+    /** পরবর্তী ইভেন্টের ব্যানার — হোম স্ক্রিনে সংক্ষিপ্ত সারসংক্ষেপ। */
+    static LinearLayout eventBanner(final Context c, final Data.Event e) {
+        LinearLayout wrap = Ui.h(c);
+        wrap.setPadding(D.dp(16), D.dp(12), D.dp(16), 0);
+
+        LinearLayout card = Ui.h(c);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(D.dp(14), D.dp(12), D.dp(6), D.dp(12));
+        card.setBackground(D.ripple(D.round(D.tertiaryC, 18), D.withAlpha(D.onTertiaryC, 40)));
+        card.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        ImageView cal = Ui.icon(c, R.drawable.ic_calendar, 20, D.onTertiaryC);
+        cal.setBackground(D.round(D.withAlpha(0xFFFFFFFF, 120), 14));
+        cal.setPadding(D.dp(10), D.dp(10), D.dp(10), D.dp(10));
+        card.addView(cal);
+        ((LinearLayout.LayoutParams) cal.getLayoutParams()).rightMargin = D.dp(12);
+
+        LinearLayout tv = Ui.v(c);
+        tv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        tv.addView(Ui.txt(c, "পরবর্তী ইভেন্ট: " + e.title, 13, D.onTertiaryC, 700));
+        int days = Data.daysUntil(e.date);
+        String when = (days == 0 ? "আজ!" : days == 1 ? "আগামীকাল" : Bn.bn(days) + " দিন পর")
+                + " • " + Bn.dayName(e.date);
+        TextView sub = Ui.txt(c, when + (e.timeText.isEmpty() ? "" : " • " + e.timeText), 11f, D.withAlpha(D.onTertiaryC, 235), 500);
+        sub.setPadding(0, D.dp(2), 0, 0);
+        tv.addView(sub);
+        card.addView(tv);
+
+        TextView btn = Ui.btnSmall(c, "বিস্তারিত", Ui.BTN_TEXT, new Runnable() {
+            public void run() { Ui.host.go("events", false); }
+        });
+        btn.setTextColor(D.onTertiaryC);
+        card.addView(btn);
+
+        wrap.addView(card);
+        return wrap;
     }
 
     static LinearLayout cooldownCard(Context c, Data.User me, Data.Cooldown cd) {

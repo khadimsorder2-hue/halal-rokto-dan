@@ -153,6 +153,31 @@ public final class ScrEmergency {
             actions.addView(done);
         }
         card.addView(actions);
+
+        /* ── SOS ব্রডকাস্ট — সামঞ্জস্যপূর্ণ সব ডোনারকে জানান ── */
+        if (!e.fulfilled) {
+            LinearLayout sos = Ui.h(c);
+            sos.setPadding(0, D.dp(10), 0, 0);
+            TextView sosBtn = Ui.btnSmall(c, "📡 সব ডোনারকে জানান (SOS)", Ui.BTN_GRAD, new Runnable() {
+                public void run() {
+                    Ui.host.haptic(24);
+                    int same = Data.availableSame(e.bloodGroup).size();
+                    int compat = Data.availableCompat(e.bloodGroup).size();
+                    String msg = "🚨 SOS: " + e.patientName + "-এর জন্য " + Bn.bn(e.units) + " ব্যাগ "
+                            + e.bloodGroup + " রক্ত জরুরি প্রয়োজন — " + e.hospital
+                            + "। যোগাযোগ: " + e.contact + "। এখনই যে দিতে পারবেন, এগিয়ে আসুন!";
+                    Chat.send("emergency", msg);
+                    Ui.host.share(msg, "SOS ব্রডকাস্ট");
+                    Data.pushNotif("all", "emg", "SOS ব্রডকাস্ট পাঠানো হয়েছে",
+                            Bn.bn(same + compat) + " জন উপলব্ধ ডোনার (" + e.bloodGroup + " ও সামঞ্জস্যপূর্ণ) জানানো হয়েছে — জরুরি চ্যানেলে দেখুন।");
+                    Ui.toast("জরুরি চ্যানেলে ব্রডকাস্ট হয়েছে — " + Bn.bn(same + compat) + " জন উপলব্ধ ডোনার", false);
+                }
+            });
+            sosBtn.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, D.dp(42)));
+            sos.addView(sosBtn);
+            card.addView(sos);
+        }
         return card;
     }
 

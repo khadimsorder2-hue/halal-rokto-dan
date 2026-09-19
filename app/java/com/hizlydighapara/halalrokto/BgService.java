@@ -192,5 +192,24 @@ public class BgService extends Service {
                         "stock", null);
             }
         }
+
+        /* ── ইভেন্ট রিমাইন্ডার — আগের দিন + ইভেন্টের দিন ── */
+        try { eventReminders(flags); } catch (Exception ignored) { }
+    }
+
+    void eventReminders(SharedPreferences flags) {
+        for (Data.Event e : Data.s.events) {
+            int days = Data.daysUntil(e.date);
+            if (days < 0 || days > 1) continue; // আজ/কাল — কেবল এ দুই দিন
+            String key = "ev_rem_" + e.id + "_" + days;
+            if (flags.getBoolean(key, false)) continue;
+            flags.edit().putBoolean(key, true).apply();
+            NotifUtil.notify(this, NotifUtil.CH_ALERTS, key.hashCode(),
+                    days == 0 ? "আজ: " + e.title : "আগামীকাল: " + e.title,
+                    (days == 0 ? "আজ " : "কাল ") + Bn.dayName(e.date) + " — "
+                            + (e.timeText.isEmpty() ? "" : e.timeText + ", ") + e.venue
+                            + (e.mine ? "। আপনি অংশ নেওয়ার কথা দিয়েছেন ✓" : ""),
+                    "events", null);
+        }
     }
 }

@@ -71,6 +71,46 @@ public final class ScrSettings {
                 m0.addView(notifRow);
                 root.addView(m0);
 
+                /* নিরাপত্তা — পিন লক */
+                root.addView(Ui.sectionHeader(c, "নিরাপত্তা"));
+                LinearLayout mSec = Ui.v(c);
+                mSec.setPadding(D.dp(16), 0, D.dp(16), 0);
+
+                LinearLayout pinRow = Ui.menuRow(c, R.drawable.ic_shield, D.primaryC, D.onPrimaryC,
+                        "অ্যাপ লক (পিন)",
+                        Data.pinEnabled() ? "চালু — খোলার সময় ৪ সংখ্যার পিন লাগবে" : "বন্ধ — কোনো পিন লাগবে না",
+                        Ui.icon(c, R.drawable.ic_chevron, 15, D.outline), new Runnable() {
+                            public void run() { pinSheet(c, render); }
+                        });
+                mSec.addView(pinRow);
+                root.addView(mSec);
+
+                /* ব্যাকআপ / রিস্টোর */
+                root.addView(Ui.sectionHeader(c, "ব্যাকআপ ও রিস্টোর"));
+                LinearLayout mBk = Ui.v(c);
+                mBk.setPadding(D.dp(16), 0, D.dp(16), 0);
+
+                LinearLayout backupRow = Ui.menuRow(c, R.drawable.ic_share, D.successC, D.onSuccessC,
+                        "ব্যাকআপ কোড শেয়ার", "সব ডেটার JSON কোড — নোটে/চ্যাটে সেভ করুন",
+                        Ui.icon(c, R.drawable.ic_chevron, 15, D.outline), new Runnable() {
+                            public void run() {
+                                Ui.host.share("🩸 " + Data.APP_NAME + " — ব্যাকআপ কোড\n"
+                                        + "তারিখ: " + Bn.fmtDate(System.currentTimeMillis()) + "\n"
+                                        + "(নোটপ্যাড/নিজের ইমেইলে সেভ রাখুন — রিস্টোর করতে সেটিংস > ব্যাকআপ রিস্টোরে পেস্ট করবেন)\n\n"
+                                        + Data.backupJson(), "ব্যাকআপ শেয়ার");
+                            }
+                        });
+                backupRow.setLayoutParams(padBottom(backupRow));
+                mBk.addView(backupRow);
+
+                LinearLayout restoreRow = Ui.menuRow(c, R.drawable.ic_refresh, 0xFFFFF3CD, 0xFF5D4E00,
+                        "ব্যাকআপ রিস্টোর", "ব্যাকআপ কোড পেস্ট করে সব ডেটা ফেরান",
+                        Ui.icon(c, R.drawable.ic_chevron, 15, D.outline), new Runnable() {
+                            public void run() { restoreSheet(c); }
+                        });
+                mBk.addView(restoreRow);
+                root.addView(mBk);
+
                 /* ডেটা ও সিঙ্ক */
                 root.addView(Ui.sectionHeader(c, "ডেটা ও সিঙ্ক"));
                 LinearLayout m2 = Ui.v(c);
@@ -169,6 +209,130 @@ public final class ScrSettings {
         sw.setThumbTintList(android.content.res.ColorStateList.valueOf(checked ? 0xFFFFFFFF : 0xFFB3A6A4));
         row.addView(sw);
         return row;
+    }
+
+    static void pinSheet(final Context c, final Runnable[] refresh) {
+        if (Data.pinEnabled()) {
+            /* চালু আছে — বদলান / বন্ধ করুন */
+            Ui.sheet(c, "অ্যাপ লক", R.drawable.ic_shield, false, new Ui.SheetCallback() {
+                public void onSheet(final LinearLayout body, final Runnable close) {
+                    TextView intro = Ui.txt(c, "লক এখন চালু। নতুন পিন সেট করতে প্রথমে বর্তমান পিন দিন।", 12f, D.onSurfaceVar, 400);
+                    intro.setLineSpacing(0, 1.5f);
+                    intro.setPadding(D.dp(20), D.dp(10), D.dp(20), D.dp(4));
+                    body.addView(intro);
+
+                    final Ui.Field fCur = Ui.field(c, "বর্তমান পিন", Ui.F_PASS, "", "৪ সংখ্যা");
+                    fCur.input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                            | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+                    android.text.InputFilter[] fl = {new android.text.InputFilter.LengthFilter(4)};
+                    fCur.input.setFilters(fl);
+                    body.addView(fCur.root);
+
+                    LinearLayout btnWrap = Ui.v(c);
+                    btnWrap.setPadding(D.dp(18), D.dp(12), D.dp(18), 0);
+                    TextView verify = Ui.btn(c, "পিন যাচাই করুন", Ui.BTN_GRAD, new Runnable() {
+                        public void run() {
+                            String cur = fCur.input.getText().toString().trim();
+                            if (!Data.checkPin(cur)) { Ui.toast("বর্তমান পিন সঠিক নয়", true); return; }
+                            close.run();
+                            newPinSheet(c, refresh);
+                        }
+                    });
+                    verify.setLayoutParams(Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, D.dp(50)));
+                    btnWrap.addView(verify);
+                    body.addView(btnWrap);
+
+                    TextView off = Ui.btn(c, "লক বন্ধ করুন", Ui.BTN_OUTLINE, new Runnable() {
+                        public void run() {
+                            String cur = fCur.input.getText().toString().trim();
+                            if (!Data.checkPin(cur)) { Ui.toast("বর্তমান পিন সঠিক নয়", true); return; }
+                            Data.setPin("");
+                            close.run();
+                            Ui.toast("অ্যাপ লক বন্ধ হয়েছে", false);
+                            refresh[0].run();
+                        }
+                    });
+                    off.setLayoutParams(Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, D.dp(48)));
+                    LinearLayout.LayoutParams offP = (LinearLayout.LayoutParams) off.getLayoutParams();
+                    offP.topMargin = D.dp(8);
+                    off.setLayoutParams(offP);
+                    btnWrap.addView(off);
+                }
+            });
+        } else {
+            newPinSheet(c, refresh);
+        }
+    }
+
+    static void newPinSheet(final Context c, final Runnable[] refresh) {
+        Ui.sheet(c, "নতুন পিন সেট করুন", R.drawable.ic_shield, false, new Ui.SheetCallback() {
+            public void onSheet(final LinearLayout body, final Runnable close) {
+                TextView intro = Ui.txt(c, "৪ সংখ্যার একটি পিন দিন — অ্যাপ খোলার সময় (এবং ব্যাকগ্রাউন্ড থেকে ফেরার সময়) এই পিন চাওয়া হবে। গোপন রাখুন।", 12f, D.onSurfaceVar, 400);
+                intro.setLineSpacing(0, 1.5f);
+                intro.setPadding(D.dp(20), D.dp(10), D.dp(20), D.dp(4));
+                body.addView(intro);
+
+                final Ui.Field f1 = Ui.field(c, "নতুন পিন", Ui.F_NUMBER, "", "৪ সংখ্যা");
+                final Ui.Field f2 = Ui.field(c, "আবার দিন", Ui.F_NUMBER, "", "একই পিন");
+                android.text.InputFilter[] fl = {new android.text.InputFilter.LengthFilter(4)};
+                f1.input.setFilters(fl);
+                f2.input.setFilters(fl);
+                body.addView(f1.root);
+                body.addView(f2.root);
+
+                LinearLayout btnWrap = Ui.v(c);
+                btnWrap.setPadding(D.dp(18), D.dp(12), D.dp(18), 0);
+                TextView save = Ui.btn(c, "পিন সেভ করুন", Ui.BTN_GRAD, new Runnable() {
+                    public void run() {
+                        String p1 = f1.input.getText().toString().trim();
+                        String p2 = f2.input.getText().toString().trim();
+                        if (p1.length() != 4) { Ui.toast("পিন অবশ্যই ৪ সংখ্যার হতে হবে", true); return; }
+                        if (!p1.equals(p2)) { Ui.toast("দুটি পিন এক নয়", true); return; }
+                        Data.setPin(p1);
+                        close.run();
+                        Ui.host.haptic(14);
+                        Ui.toast("অ্যাপ লক চালু হয়েছে", false);
+                        refresh[0].run();
+                    }
+                });
+                save.setLayoutParams(Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, D.dp(50)));
+                btnWrap.addView(save);
+                body.addView(btnWrap);
+            }
+        });
+    }
+
+    static void restoreSheet(final Context c) {
+        Ui.sheet(c, "ব্যাকআপ রিস্টোর", R.drawable.ic_refresh, true, new Ui.SheetCallback() {
+            public void onSheet(final LinearLayout body, final Runnable close) {
+                TextView intro = Ui.txt(c, "ব্যাকআপ কোড পুরোটা পেস্ট করুন। সতর্কতা: বর্তমান সব ডেটা বদলে যাবে।", 12f, D.onSurfaceVar, 400);
+                intro.setLineSpacing(0, 1.5f);
+                intro.setPadding(D.dp(20), D.dp(10), D.dp(20), D.dp(4));
+                body.addView(intro);
+
+                final Ui.Field fJson = Ui.field(c, "ব্যাকআপ কোড", Ui.F_AREA, "", "{ \"app\": \"Halal Rokto Dan\" ... }");
+                body.addView(fJson.root);
+
+                LinearLayout btnWrap = Ui.v(c);
+                btnWrap.setPadding(D.dp(18), D.dp(12), D.dp(18), 0);
+                TextView restore = Ui.btn(c, "রিস্টোর করুন", Ui.BTN_GRAD, new Runnable() {
+                    public void run() {
+                        String raw = fJson.input.getText().toString().trim();
+                        if (raw.isEmpty()) { Ui.toast("ব্যাকআপ কোড পেস্ট করুন", true); return; }
+                        String err = Data.importJson(raw);
+                        if (err != null) { Ui.toast(err, true); return; }
+                        close.run();
+                        Ui.host.haptic(14);
+                        Ui.toast("রিস্টোর সফল — সব ডেটা ফিরে এসেছে", false);
+                        if (Data.s.session == null) Ui.host.go("auth", true);
+                        else Ui.host.applyTheme();
+                    }
+                });
+                restore.setLayoutParams(Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, D.dp(50)));
+                btnWrap.addView(restore);
+                body.addView(btnWrap);
+            }
+        });
     }
 
     static void serverSheet(final Context c, final Runnable[] refresh) {

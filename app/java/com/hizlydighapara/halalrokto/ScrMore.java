@@ -93,6 +93,64 @@ public final class ScrMore {
         menu1.addView(r0b);
         ((LinearLayout.LayoutParams) r0b.getLayoutParams()).bottomMargin = D.dp(9);
 
+        Data.Event nx = Data.nextEvent();
+        LinearLayout rEv = Ui.menuRow(c, R.drawable.ic_calendar, D.successC, D.onSuccessC,
+                "ইভেন্ট ও ক্যাম্প",
+                nx != null ? "পরবর্তী: " + nx.title + " • " + Bn.bn(Data.daysUntil(nx.date)) + " দিন বাকি" : "সংঘের কর্মসূচি দেখুন",
+                chevron(c), new Runnable() {
+                    public void run() { Ui.host.go("events", false); }
+                });
+        menu1.addView(rEv);
+        ((LinearLayout.LayoutParams) rEv.getLayoutParams()).bottomMargin = D.dp(9);
+
+        LinearLayout rSt = Ui.menuRow(c, R.drawable.ic_chart, 0xFFDCEEEE, 0xFF0F3B3B,
+                "পরিসংখ্যান", "মাসিক দানের চার্ট, অগ্রগতি ও মাইলফলক",
+                chevron(c), new Runnable() {
+                    public void run() { Ui.host.go("stats", false); }
+                });
+        menu1.addView(rSt);
+        ((LinearLayout.LayoutParams) rSt.getLayoutParams()).bottomMargin = D.dp(9);
+
+        LinearLayout rEl = Ui.menuRow(c, R.drawable.ic_drop, D.primaryC, D.onPrimaryC,
+                "যোগ্যতা চেক", "রক্ত দিতে পারবেন কি না — কুইজ দিয়ে জানুন",
+                chevron(c), new Runnable() {
+                    public void run() { Ui.host.go("eligible", false); }
+                });
+        menu1.addView(rEl);
+        ((LinearLayout.LayoutParams) rEl.getLayoutParams()).bottomMargin = D.dp(9);
+
+        LinearLayout rCt = Ui.menuRow(c, R.drawable.ic_bloodbank, 0xFFFFF3CD, 0xFF5D4E00,
+                "রক্তের সামঞ্জস্য", "কে কাকে দিতে পারে — ম্যাট্রিক্স",
+                chevron(c), new Runnable() {
+                    public void run() { Ui.host.go("compat", false); }
+                });
+        menu1.addView(rCt);
+        ((LinearLayout.LayoutParams) rCt.getLayoutParams()).bottomMargin = D.dp(9);
+
+        LinearLayout rHp = Ui.menuRow(c, R.drawable.ic_hosp, 0xFFE8DEF8, 0xFF3A2A5E,
+                "হাসপাতাল ও হটলাইন", "নাটোর জেলার ঠিকানা ও ৯৯৯ কল",
+                chevron(c), new Runnable() {
+                    public void run() { Ui.host.go("hospitals", false); }
+                });
+        menu1.addView(rHp);
+        ((LinearLayout.LayoutParams) rHp.getLayoutParams()).bottomMargin = D.dp(9);
+
+        LinearLayout rGd = Ui.menuRow(c, R.drawable.ic_info, D.tertiaryC, D.onTertiaryC,
+                "রক্তদান গাইড", "আগে-পরে করণীয়, হালাল দৃষ্টিভঙ্গি, প্রশ্নোত্তর",
+                chevron(c), new Runnable() {
+                    public void run() { Ui.host.go("guide", false); }
+                });
+        menu1.addView(rGd);
+        ((LinearLayout.LayoutParams) rGd.getLayoutParams()).bottomMargin = D.dp(9);
+
+        LinearLayout rCf = Ui.menuRow(c, R.drawable.ic_award, 0xFFFFE082, 0xFF5D4200,
+                "সম্মাননা সনদ", "আপনার রক্তদানের সনদ ছবি হিসেবে শেয়ার করুন",
+                chevron(c), new Runnable() {
+                    public void run() { Ui.host.go("cert", false); }
+                });
+        menu1.addView(rCf);
+        ((LinearLayout.LayoutParams) rCf.getLayoutParams()).bottomMargin = D.dp(9);
+
         LinearLayout r1 = Ui.menuRow(c, R.drawable.ic_history, D.primaryC, D.onPrimaryC,
                 "রক্তদানের ইতিহাস", "আপনার সকল দানের রেকর্ড ও টাইমলাইন",
                 chevron(c), new Runnable() {

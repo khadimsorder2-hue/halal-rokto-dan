@@ -17,6 +17,7 @@ public class BootReceiver extends BroadcastReceiver {
             Data.init(context);
             Chat.init(context);
             NotifUtil.ensureService(context);
+            StockWidget.push(context); // রিস্টার্টের পর উইজেট রিফ্রেশ
         } catch (Exception ignored) { }
     }
 }

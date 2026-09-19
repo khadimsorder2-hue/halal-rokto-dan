@@ -10,8 +10,10 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.GregorianCalendar;
 import java.util.List;
 
 /** ডেটা লেয়ার: মডেল, স্টোর (SharedPreferences+JSON), অথ, বিজনেস লজিক, সিঙ্ক। */
@@ -19,7 +21,7 @@ public final class Data {
 
     public static final String APP_NAME = "হালাল রক্ত দান";
     public static final String APP_NAME_EN = "Halal Rokto Dan";
-    public static final String VERSION = "3.1.0";
+    public static final String VERSION = "3.2.0";
     public static final String ORG = "হিজলি দিঘাপাড়া যুব সংঘ";
     public static final String ORG_EN = "Hizly Dighapara JUBO Sangho";
     public static final String SINCE = "Since ২০২৬";
@@ -35,6 +37,27 @@ public final class Data {
     public static String compatOf(String g) {
         for (String[] c : COMPAT) if (c[0].equals(g)) return c[1];
         return g;
+    }
+
+    /** g রোগী কাদের কাছ থেকে রক্ত নিতে পারবে → COMPAT[g];
+     *  g দাতা কাদের দিতে পারবে → reverseCompat(g)। */
+    public static String reverseCompatOf(String g) {
+        StringBuilder b = new StringBuilder();
+        for (String[] c : COMPAT) {
+            if ((" " + c[1] + " ").contains(" " + g + " ")) {
+                if (b.length() > 0) b.append(" ");
+                b.append(c[0]);
+            }
+        }
+        return b.toString();
+    }
+
+    /** বাংলাদেশে জনসংখ্যার রক্তের গ্রুপ-ভিত্তিক অনুপাত (শতকরা)। */
+    public static int populationPct(String g) {
+        switch (g) {
+            case "O+": return 37; case "B+": return 33; case "A+": return 21; case "AB+": return 9;
+            case "O-": return 4; case "B-": return 2; case "A-": return 2; default: return 1; // AB-
+        }
     }
     public static String rarityOf(String g) {
         switch (g) {
@@ -144,6 +167,35 @@ public final class Data {
         }
     }
 
+    public static class Event {
+        public String id, title, type, venue, details, contact, timeText;
+        public long date;             // ইভেন্টের তারিখ
+        public long createdAt;
+        public String createdBy;
+        public int rsvpBase;          // ডেমো আরএসভিপি সংখ্যা
+        public boolean mine;          // আমি অংশ নিব
+
+        JSONObject toJson() throws Exception {
+            return new JSONObject()
+                    .put("id", id).put("title", title).put("type", type)
+                    .put("date", date).put("timeText", timeText).put("venue", venue)
+                    .put("details", details).put("contact", contact)
+                    .put("createdAt", createdAt).put("createdBy", createdBy)
+                    .put("rsvpBase", rsvpBase).put("mine", mine);
+        }
+        static Event fromJson(JSONObject o) throws Exception {
+            Event e = new Event();
+            e.id = o.getString("id"); e.title = o.optString("title", "");
+            e.type = o.optString("type", "camp"); e.date = o.optLong("date", System.currentTimeMillis());
+            e.timeText = o.optString("timeText", ""); e.venue = o.optString("venue", "");
+            e.details = o.optString("details", ""); e.contact = o.optString("contact", "");
+            e.createdAt = o.optLong("createdAt", System.currentTimeMillis());
+            e.createdBy = o.optString("createdBy", "");
+            e.rsvpBase = o.optInt("rsvpBase", 0); e.mine = o.optBoolean("mine", false);
+            return e;
+        }
+    }
+
     public static class Notif {
         public String id, userId, type, title, body;
         public long date;
@@ -172,9 +224,11 @@ public final class Data {
         public List<Donation> donations = new ArrayList<>();
         public List<Emergency> emergencies = new ArrayList<>();
         public List<Notif> notifications = new ArrayList<>();
+        public List<Event> events = new ArrayList<>();
         public int[] stock = new int[8]; // index of BLOOD_GROUPS
         public boolean themeDark = false, demoData = true;
         public boolean notifOn = true;
+        public String pin = "";           // হ্যাশ; খালি = লক নেই
         public String serverUrl = "";
         public long syncLast = 0;
         public String syncStatus = "off";
@@ -213,6 +267,9 @@ public final class Data {
                 s.notifications.clear();
                 a = o.optJSONArray("notifications");
                 if (a != null) for (int i = 0; i < a.length(); i++) s.notifications.add(Notif.fromJson(a.getJSONObject(i)));
+                s.events.clear();
+                a = o.optJSONArray("events");
+                if (a != null) for (int i = 0; i < a.length(); i++) s.events.add(Event.fromJson(a.getJSONObject(i)));
                 a = o.optJSONArray("stock");
                 if (a != null) for (int i = 0; i < 8 && i < a.length(); i++) s.stock[i] = a.optInt(i, 0);
                 JSONObject st = o.optJSONObject("settings");
@@ -221,6 +278,7 @@ public final class Data {
                     s.demoData = st.optBoolean("demoData", true);
                     s.notifOn = st.optBoolean("notifOn", true);
                     s.serverUrl = st.optString("serverUrl", "");
+                    s.pin = st.optString("pin", "");
                 }
                 JSONObject sy = o.optJSONObject("sync");
                 if (sy != null) { s.syncLast = sy.optLong("last", 0); s.syncStatus = sy.optString("status", "off"); }
@@ -240,10 +298,11 @@ public final class Data {
             a = new JSONArray(); for (Donation d : s.donations) a.put(d.toJson()); o.put("donations", a);
             a = new JSONArray(); for (Emergency e : s.emergencies) a.put(e.toJson()); o.put("emergencies", a);
             a = new JSONArray(); for (Notif n : s.notifications) a.put(n.toJson()); o.put("notifications", a);
+            a = new JSONArray(); for (Event e : s.events) a.put(e.toJson()); o.put("events", a);
             a = new JSONArray(); for (int i : s.stock) a.put(i); o.put("stock", a);
             o.put("settings", new JSONObject()
                     .put("themeDark", s.themeDark).put("demoData", s.demoData)
-                    .put("notifOn", s.notifOn).put("serverUrl", s.serverUrl));
+                    .put("notifOn", s.notifOn).put("serverUrl", s.serverUrl).put("pin", s.pin));
             o.put("sync", new JSONObject().put("last", s.syncLast).put("status", s.syncStatus));
             prefs.edit().putString("state", o.toString()).apply();
         } catch (Exception ignored) { }
@@ -319,6 +378,74 @@ public final class Data {
         s.emergencies.add(e2);
 
         s.stock = new int[]{6, 3, 5, 2, 4, 1, 7, 2};
+
+        seedEvents(now);
+    }
+
+    static void seedEvents(long now) {
+        final long D = 86400000L;
+        Object[][] demo = {
+                {"স্বেচ্ছায় রক্তদান ক্যাম্প", "camp", 3L, "সকাল ৯টা – দুপুর ২টা", "বাগাতিপাড়া ইউনিয়ন পরিষদ মাঠ",
+                        "সংঘের ২য় স্বেচ্ছায় রক্তদান ক্যাম্প। সরকারি মেডিকেল টিম থাকবে, ফ্রি ব্লাড গ্রুপ টেস্ট ও চা-নাস্তা। দাতাদের ডোনার কার্ড ও সনদ প্রদান করা হবে।", 24},
+                {"মাসিক কমিটি বৈঠক", "meeting", 6L, "বিকাল ৪টা", "সংঘ কার্যালয়, হিজলি বাজার",
+                        "আগামী ক্যাম্পের দায়িত্ব বণ্টন, নতুন সদস্য অনুমোদন ও বাজেট অনুমোদন। সব কমিটি সদস্যের উপস্থিতি বাধ্যতামূলক।", 11},
+                {"রক্তদান সচেতনতা র‍্যালি ও আলোচনা", "awareness", 12L, "সকাল ১০টা", "দিঘাপাড়া বাজার থেকে হিজলি",
+                        "গ্রামে রক্তদান বিষয়ক কুসংস্কার দূর করতে ব্যানার-মাইক র‍্যালি, এরপর মসজিদ প্রাঙ্গণে আলোচনা সভা।", 38},
+                {"ঈদ পুনর্মিলনী ও পুরস্কার বিতরণ", "social", 10L, "সন্ধ্যা ৭টা", "সংঘ কার্যালয় প্রাঙ্গণ",
+                        "বিগত বছরের সেরা ডোনারদের সম্মাননা।", 45},
+        };
+        for (int i = 0; i < demo.length; i++) {
+            Object[] r = demo[i];
+            Event e = new Event();
+            e.id = "demo_ev_" + (i + 1);
+            e.title = (String) r[0]; e.type = (String) r[1];
+            e.date = now + ((Long) r[2]) * D; // শেষটি অতীত
+            if (i == 3) e.date = now - 10L * D;
+            e.timeText = (String) r[3]; e.venue = (String) r[4];
+            e.details = (String) r[5]; e.rsvpBase = (Integer) r[6];
+            e.createdAt = now - 6L * D; e.createdBy = "demo_1"; e.mine = false; e.contact = "";
+            s.events.add(e);
+        }
+    }
+
+    /* ══ ইভেন্ট কোয়েরি ═══════════════════════════════════ */
+    public static List<Event> visibleEvents() {
+        List<Event> out = new ArrayList<>(s.events);
+        Collections.sort(out, new Comparator<Event>() {
+            public int compare(Event a, Event b) { return Long.compare(a.date, b.date); }
+        });
+        return out;
+    }
+
+    /** আজ বা ভবিষ্যতের ইভেন্ট, শীঘ্র আগে। */
+    public static List<Event> upcomingEvents() {
+        long today0 = todayStart();
+        List<Event> out = new ArrayList<>();
+        for (Event e : visibleEvents()) if (e.date >= today0) out.add(e);
+        return out;
+    }
+
+    public static Event nextEvent() {
+        List<Event> up = upcomingEvents();
+        return up.isEmpty() ? null : up.get(0);
+    }
+
+    static long todayStart() {
+        Calendar c = new GregorianCalendar();
+        c.set(Calendar.HOUR_OF_DAY, 0); c.set(Calendar.MINUTE, 0);
+        c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0);
+        return c.getTimeInMillis();
+    }
+
+    public static int rsvpCount(Event e) { return e.rsvpBase + (e.mine ? 1 : 0); }
+
+    public static void toggleRsvp(Event e) {
+        e.mine = !e.mine;
+        save();
+    }
+
+    public static int daysUntil(long ts) {
+        return (int) Math.round((ts - todayStart()) / 86400000.0);
     }
 
     /* ══ Queries ══════════════════════════════════════════════ */
@@ -482,6 +609,87 @@ public final class Data {
         if (c >= 5) return new String[]{"bronze", "ব্রোঞ্জ ডোনার"};
         if (c >= 1) return new String[]{"friend", "রক্তবন্ধু"};
         return new String[]{"new", "নতুন ডোনার"};
+    }
+
+    /* ══ পিন লক ═══════════════════════════════════════════ */
+    public static String pinHash(String pin) { return String.valueOf(Bn.hash("pin:" + pin)); }
+
+    public static boolean pinEnabled() { return s.pin != null && s.pin.length() > 0; }
+
+    public static void setPin(String pin) {
+        s.pin = pin == null || pin.isEmpty() ? "" : pinHash(pin);
+        save();
+    }
+
+    public static boolean checkPin(String pin) { return s.pin.equals(pinHash(pin)); }
+
+    /* ══ ব্যাকআপ / রিস্টোর ═══════════════════════════════ */
+    public static String backupJson() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("app", APP_NAME_EN).put("version", VERSION).put("org", ORG_EN)
+                    .put("exportedAt", System.currentTimeMillis());
+            JSONArray a = new JSONArray(); for (User u : s.users) a.put(u.toJson()); o.put("users", a);
+            a = new JSONArray(); for (Donation d : s.donations) a.put(d.toJson()); o.put("donations", a);
+            a = new JSONArray(); for (Emergency e : s.emergencies) a.put(e.toJson()); o.put("emergencies", a);
+            a = new JSONArray(); for (Event e : s.events) a.put(e.toJson()); o.put("events", a);
+            a = new JSONArray(); for (Notif n : s.notifications) a.put(n.toJson()); o.put("notifications", a);
+            a = new JSONArray(); for (int i : s.stock) a.put(i); o.put("stock", a);
+            return o.toString(1);
+        } catch (Exception e) { return "{}"; }
+    }
+
+    /** @return null = সফল, নাহলে এরর বার্তা */
+    public static String importJson(String raw) {
+        try {
+            JSONObject o = new JSONObject(raw);
+            JSONArray a = o.optJSONArray("users");
+            if (a == null || a.length() == 0) return "ব্যাকআপ ফাইলে কোনো ইউজার পাওয়া যায়নি — সঠিক ব্যাকআপ কোড দিন।";
+            s.users.clear();
+            for (int i = 0; i < a.length(); i++) s.users.add(User.fromJson(a.getJSONObject(i)));
+            s.donations.clear();
+            a = o.optJSONArray("donations");
+            if (a != null) for (int i = 0; i < a.length(); i++) s.donations.add(Donation.fromJson(a.getJSONObject(i)));
+            s.emergencies.clear();
+            a = o.optJSONArray("emergencies");
+            if (a != null) for (int i = 0; i < a.length(); i++) s.emergencies.add(Emergency.fromJson(a.getJSONObject(i)));
+            s.events.clear();
+            a = o.optJSONArray("events");
+            if (a != null) for (int i = 0; i < a.length(); i++) s.events.add(Event.fromJson(a.getJSONObject(i)));
+            else seedEvents(System.currentTimeMillis());
+            s.notifications.clear();
+            a = o.optJSONArray("notifications");
+            if (a != null) for (int i = 0; i < a.length(); i++) s.notifications.add(Notif.fromJson(a.getJSONObject(i)));
+            a = o.optJSONArray("stock");
+            if (a != null) for (int i = 0; i < 8 && i < a.length(); i++) s.stock[i] = a.optInt(i, 0);
+            // সেশন যাচাই — ইউজার বাকি আছে কি না
+            if (s.session != null && userById(s.session) == null) s.session = null;
+            save();
+            return null;
+        } catch (Exception e) {
+            return "ব্যাকআপ কোডটি পড়া যায়নি — পুরো কোডটি অক্ষত পেস্ট করেছেন কি না দেখুন।";
+        }
+    }
+
+    /* ══ পরিসংখ্যান (ScrStats-এর জন্য) ══════════════════ */
+    /** শেষ ৬ মাসের দান (index 5 = চলতি মাস)। */
+    public static int[] donationsLast6Months() {
+        int[] out = new int[6];
+        Calendar c = new GregorianCalendar();
+        for (Donation d : visibleDonations()) {
+            Calendar dc = new GregorianCalendar();
+            dc.setTimeInMillis(d.date);
+            int diff = (c.get(Calendar.YEAR) - dc.get(Calendar.YEAR)) * 12
+                    + (c.get(Calendar.MONTH) - dc.get(Calendar.MONTH));
+            if (diff >= 0 && diff < 6) out[5 - diff]++;
+        }
+        return out;
+    }
+
+    public static int[] donorsByGroup() {
+        int[] out = new int[8];
+        for (User u : visibleUsers()) out[stockIdx(u.bloodType)]++;
+        return out;
     }
 
     /* ══ Auth ═════════════════════════════════════════════════ */

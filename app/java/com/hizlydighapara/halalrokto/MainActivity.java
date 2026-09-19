@@ -5,15 +5,19 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.provider.MediaStore;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -26,6 +30,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,6 +42,8 @@ public class MainActivity extends Activity {
     FrameLayout sheetHost;        // bottom sheet overlay
     LinearLayout toastHost;       // toast bar slot
     LinearLayout bottomNav;
+    FrameLayout lockHost;         // পিন লক ওভারলে
+    boolean locked = false;
 
     int statusBarH = 0, navBarH = 0;
     String currentScreen = "";
@@ -55,12 +62,44 @@ public class MainActivity extends Activity {
 
         buildRoot();
 
+        if (Data.pinEnabled()) {
+            locked = true;
+            showLock();
+        }
+
         if (!Data.s.onboardingDone) go("onboarding", true);
         else if (Data.s.session == null) go("auth", true);
         else {
             go("home", true);
             handleDeep(getIntent());
         }
+    }
+
+    /* ── পিন লক ─────────────────────────────────────── */
+    void showLock() {
+        if (!Data.pinEnabled()) return;
+        lockHost.removeAllViews();
+        lockHost.addView(Lock.build(this, statusBarH, new Runnable() {
+            public void run() {
+                locked = false;
+                lockHost.setVisibility(View.GONE);
+                lockHost.removeAllViews();
+            }
+        }));
+        lockHost.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (Data.pinEnabled() && locked && lockHost.getChildCount() == 0) showLock();
+        StockWidget.push(this);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (Data.pinEnabled()) locked = true;
     }
 
     @Override
@@ -78,7 +117,7 @@ public class MainActivity extends Activity {
         if (screen == null) return;
         if (!screen.equals("home") && !screen.equals("stock") && !screen.equals("emergency")
                 && !screen.equals("chat") && !screen.equals("chatroom") && !screen.equals("donors")
-                && !screen.equals("notifs")) return;
+                && !screen.equals("notifs") && !screen.equals("events") && !screen.equals("stats")) return;
         if (currentScreen.equals(screen) && !screen.equals("chatroom")) return;
         if (screen.equals("chatroom") && channel != null) {
             go("home", true);
@@ -119,6 +158,14 @@ public class MainActivity extends Activity {
         toastHost.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
         root.addView(toastHost);
+
+        lockHost = new FrameLayout(this);
+        lockHost.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        lockHost.setBackgroundColor(D.bg);
+        lockHost.setClickable(true);
+        lockHost.setVisibility(View.GONE);
+        root.addView(lockHost);
 
         setContentView(root);
         applyInsets();
@@ -296,6 +343,7 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (lockHost.getVisibility() == View.VISIBLE) return; // লক অবস্থায় ব্যাক নেই
         if (sheetHost.getVisibility() == View.VISIBLE && sheetHost.getChildCount() > 0) {
             View overlay = sheetHost.getChildAt(0);
             if (overlay instanceof FrameLayout) {
@@ -328,6 +376,13 @@ public class MainActivity extends Activity {
         if (id.equals("profile")) return ScrProfile.build(c);
         if (id.equals("settings")) return ScrSettings.build(c);
         if (id.equals("about")) return ScrAbout.build(c);
+        if (id.equals("events")) return ScrEvents.build(c);
+        if (id.equals("eligible")) return ScrEligible.build(c);
+        if (id.equals("compat")) return ScrCompat.build(c);
+        if (id.equals("hospitals")) return ScrHospitals.build(c);
+        if (id.equals("stats")) return ScrStats.build(c);
+        if (id.equals("guide")) return ScrGuide.build(c);
+        if (id.equals("cert")) return ScrCert.build(c);
         return null;
     }
 
@@ -438,11 +493,75 @@ public class MainActivity extends Activity {
 
     /** Rebuild current screen after theme/data change. */
     public void refresh() {
+        StockWidget.push(this);
         View old = screenHost.getChildAt(0);
         if (old != null) screenHost.removeView(old);
         String cur = currentScreen;
         currentScreen = "";
         go(cur, false);
+    }
+
+    /* ── ছবি শেয়ার (সার্টিফিকেট) ─────────────────────────── */
+    Bitmap pendingShareBmp;
+    String pendingShareName;
+
+    /** Bitmap → MediaStore-এ সেভ → শেয়ার ইন্টেন্ট। API<29-এ পারমিশন লাগতে পারে। */
+    public void shareImage(Bitmap bmp, String name) {
+        try {
+            if (Build.VERSION.SDK_INT < 29
+                    && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                pendingShareBmp = bmp;
+                pendingShareName = name;
+                requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4002);
+                return;
+            }
+            Uri uri = saveToGallery(bmp, name);
+            if (uri == null) { Ui.toast("ছবি সেভ করা যায়নি", true); return; }
+            Ui.toast("গ্যালারিতে সেভ হয়েছে — এখন শেয়ার করুন", false);
+            Intent i = new Intent(Intent.ACTION_SEND);
+            i.setType("image/png");
+            i.putExtra(Intent.EXTRA_STREAM, uri);
+            i.setClipData(android.content.ClipData.newRawUri("img", uri));
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(i, "সনদ শেয়ার করুন"));
+        } catch (Exception e) {
+            Ui.toast("শেয়ার করা যায়নি", true);
+        }
+    }
+
+    Uri saveToGallery(Bitmap bmp, String name) {
+        try {
+            ContentValues cv = new ContentValues();
+            cv.put(MediaStore.Images.Media.DISPLAY_NAME, name + ".png");
+            cv.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+            if (Build.VERSION.SDK_INT >= 29)
+                cv.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/HalalRoktoDan");
+            Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
+            if (uri == null) return null;
+            OutputStream os = getContentResolver().openOutputStream(uri);
+            if (os == null) return null;
+            bmp.compress(Bitmap.CompressFormat.PNG, 95, os);
+            os.close();
+            return uri;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 4002 && pendingShareBmp != null) {
+            Bitmap bmp = pendingShareBmp;
+            String name = pendingShareName;
+            pendingShareBmp = null;
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                shareImage(bmp, name);
+            } else {
+                Ui.toast("স্টোরেজ পারমিশন ছাড়া ছবি সেভ হবে না", true);
+            }
+        }
     }
 
     /** Rebuild everything after dark-mode toggle. */
