@@ -236,6 +236,7 @@ public final class Data {
 
     public static S s = new S();
     private static SharedPreferences prefs;
+    static boolean eventsSeeded = false; // v3.1 আপগ্রেডে একবার ইভেন্ট সীড হলো কি না
 
     public static void init(Context c) {
         prefs = c.getSharedPreferences("halal_rokto_dan_v3", Context.MODE_PRIVATE);
@@ -270,6 +271,11 @@ public final class Data {
                 s.events.clear();
                 a = o.optJSONArray("events");
                 if (a != null) for (int i = 0; i < a.length(); i++) s.events.add(Event.fromJson(a.getJSONObject(i)));
+                /* v3.1 থেকে আপগ্রেড হলে ইভেন্ট নেই — একবার সীড দিই (ফ্ল্যাগসহ) */
+                if (s.events.isEmpty() && !o.optBoolean("eventsSeeded", false)) {
+                    seedEvents(System.currentTimeMillis());
+                    eventsSeeded = true;
+                }
                 a = o.optJSONArray("stock");
                 if (a != null) for (int i = 0; i < 8 && i < a.length(); i++) s.stock[i] = a.optInt(i, 0);
                 JSONObject st = o.optJSONObject("settings");
@@ -304,6 +310,7 @@ public final class Data {
                     .put("themeDark", s.themeDark).put("demoData", s.demoData)
                     .put("notifOn", s.notifOn).put("serverUrl", s.serverUrl).put("pin", s.pin));
             o.put("sync", new JSONObject().put("last", s.syncLast).put("status", s.syncStatus));
+            o.put("eventsSeeded", true);
             prefs.edit().putString("state", o.toString()).apply();
         } catch (Exception ignored) { }
     }
