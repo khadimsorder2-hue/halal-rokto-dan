@@ -40,6 +40,8 @@ public class MainActivity extends Activity {
 
     int statusBarH = 0, navBarH = 0;
     String currentScreen = "";
+    String pendingRoom = null; // chat room to open
+    boolean serviceEnsured = false;
     final List<String> backStack = new ArrayList<>();
 
     @Override
@@ -47,6 +49,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         D.init(this);
         Data.init(this);
+        Chat.init(this);
         Ui.host = this;
         D.setDark(Data.s.themeDark);
 
@@ -54,7 +57,35 @@ public class MainActivity extends Activity {
 
         if (!Data.s.onboardingDone) go("onboarding", true);
         else if (Data.s.session == null) go("auth", true);
-        else go("home", true);
+        else {
+            go("home", true);
+            handleDeep(getIntent());
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleDeep(intent);
+    }
+
+    /** নোটিফিকেশন ট্যাপ থেকে সরাসরি নির্দিষ্ট স্ক্রিনে যাওয়া। */
+    void handleDeep(Intent i) {
+        if (i == null || Data.s.session == null) return;
+        String screen = i.getStringExtra("screen");
+        String channel = i.getStringExtra("channel");
+        if (screen == null) return;
+        if (!screen.equals("home") && !screen.equals("stock") && !screen.equals("emergency")
+                && !screen.equals("chat") && !screen.equals("chatroom") && !screen.equals("donors")
+                && !screen.equals("notifs")) return;
+        if (currentScreen.equals(screen) && !screen.equals("chatroom")) return;
+        if (screen.equals("chatroom") && channel != null) {
+            go("home", true);
+            openChat(channel);
+        } else if (!screen.equals(currentScreen)) {
+            go(screen, false);
+        }
     }
 
     /* ── Root chrome ────────────────────────────────────────── */
@@ -140,7 +171,8 @@ public class MainActivity extends Activity {
         nav.setVisibility(View.GONE);
 
         String[][] tabs = {
-                {"home", "হোম"}, {"stock", "স্টক"}, {"emergency", "জরুরি"}, {"donors", "ডোনার"}, {"more", "আরও"}
+                {"home", "হোম"}, {"stock", "স্টক"}, {"emergency", "জরুরি"},
+                {"chat", "চ্যাট"}, {"donors", "ডোনার"}, {"more", "আরও"}
         };
         for (final String[] tab : tabs) {
             LinearLayout item = Ui.v(this);
@@ -153,14 +185,15 @@ public class MainActivity extends Activity {
             int resId = tab[0].equals("home") ? R.drawable.ic_home
                     : tab[0].equals("stock") ? R.drawable.ic_bloodbank
                     : tab[0].equals("emergency") ? R.drawable.ic_sos
+                    : tab[0].equals("chat") ? R.drawable.ic_chat
                     : tab[0].equals("donors") ? R.drawable.ic_people
                     : R.drawable.ic_grid;
-            ImageView iv = Ui.icon(this, resId, 22, D.onSurfaceVar);
-            iv.setLayoutParams(Ui.flp(D.dp(22), D.dp(22), Gravity.CENTER));
+            ImageView iv = Ui.icon(this, resId, 21, D.onSurfaceVar);
+            iv.setLayoutParams(Ui.flp(D.dp(21), D.dp(21), Gravity.CENTER));
             iconSlot.addView(iv);
             item.addView(iconSlot);
 
-            TextView label = Ui.txt(this, tab[1], 10f, D.onSurfaceVar, 600);
+            TextView label = Ui.txt(this, tab[1], 9.5f, D.onSurfaceVar, 600);
             label.setGravity(Gravity.CENTER);
             label.setPadding(0, D.dp(3), 0, 0);
             item.addView(label);
@@ -179,8 +212,8 @@ public class MainActivity extends Activity {
 
     void updateNav() {
         boolean showNav = currentScreen.equals("home") || currentScreen.equals("stock")
-                || currentScreen.equals("emergency") || currentScreen.equals("donors")
-                || currentScreen.equals("more");
+                || currentScreen.equals("emergency") || currentScreen.equals("chat")
+                || currentScreen.equals("donors") || currentScreen.equals("more");
         bottomNav.setVisibility(showNav ? View.VISIBLE : View.GONE);
         int navPad = showNav ? navBarH - D.dp(8) : 0;
         if (navPad < 0) navPad = 0;
@@ -200,16 +233,40 @@ public class MainActivity extends Activity {
                 slot.setBackground(D.round(D.primaryC, 50));
                 slot.getLayoutParams().height = D.dp(30);
             } else slot.setBackground(null);
+
+            /* চ্যাট ট্যাবে আনরিড ব্যাজ */
+            View oldBadge = slot.findViewWithTag("navbadge");
+            if (oldBadge != null) slot.removeView(oldBadge);
+            if (tag.equals("chat") && Chat.unreadTotal() > 0) {
+                TextView badge = Ui.txt(this, Bn.bn(Chat.unreadTotal()), 9f, 0xFFFFFFFF, 700);
+                badge.setGravity(Gravity.CENTER);
+                badge.setPadding(D.dp(5), D.dp(1), D.dp(5), D.dp(1));
+                badge.setBackground(D.round(0xFF1E6B33, 50));
+                badge.setElevation(D.dp(2));
+                badge.setTag("navbadge");
+                badge.setLayoutParams(Ui.flp(ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END));
+                slot.addView(badge);
+            }
         }
     }
 
     /* ── Navigation ─────────────────────────────────────────── */
     public void go(String screen, boolean reset) {
         if (screen.equals(currentScreen)) return;
+        Chat.activeRoom = null;
         if (reset) backStack.clear();
         else if (currentScreen.length() > 0) backStack.add(currentScreen);
 
         currentScreen = screen;
+
+        /* লগইনের পর নোটিফিকেশন পারমিশন + ব্যাকগ্রাউন্ড সার্ভিস চালু */
+        if (!serviceEnsured && Data.s.session != null) {
+            serviceEnsured = true;
+            NotifUtil.requestPermission(this);
+            NotifUtil.ensureService(this);
+        }
+
         View v = buildScreen(screen);
         if (v == null) return;
         v.setPadding(0, statusBarH, 0, 0);
@@ -259,6 +316,8 @@ public class MainActivity extends Activity {
         if (id.equals("home")) return ScrHome.build(c);
         if (id.equals("stock")) return ScrStock.build(c);
         if (id.equals("emergency")) return ScrEmergency.build(c);
+        if (id.equals("chat")) return ScrChat.build(c);
+        if (id.equals("chatroom")) return ScrChatRoom.build(c);
         if (id.equals("donors")) return ScrDonors.build(c);
         if (id.equals("ranking")) return ScrRanking.build(c);
         if (id.equals("history")) return ScrHistory.build(c);
@@ -270,6 +329,25 @@ public class MainActivity extends Activity {
         if (id.equals("settings")) return ScrSettings.build(c);
         if (id.equals("about")) return ScrAbout.build(c);
         return null;
+    }
+
+    /** চ্যাট রুম খোলা — ScrChat/ScrStock/নোটিফিকেশন থেকে। */
+    public void openChat(String ch) {
+        dismissSheet();
+        pendingRoom = ch;
+        go("chatroom", false);
+    }
+
+    /** খোলা থাকা বটম শিট বন্ধ করা (স্ক্রিন বদলানোর আগে)। */
+    public void dismissSheet() {
+        if (sheetHost.getVisibility() == View.VISIBLE && sheetHost.getChildCount() > 0) {
+            View overlay = sheetHost.getChildAt(0);
+            if (overlay instanceof FrameLayout) {
+                View panel = ((FrameLayout) overlay).findViewWithTag("panel");
+                if (panel instanceof LinearLayout)
+                    closeSheet((FrameLayout) overlay, (LinearLayout) panel);
+            }
+        }
     }
 
     /* ── Sheet & toast plumbing ─────────────────────────────── */
@@ -295,8 +373,12 @@ public class MainActivity extends Activity {
                 .setInterpolator(new AccelerateDecelerateInterpolator())
                 .withEndAction(new Runnable() {
                     public void run() {
-                        sheetHost.removeAllViews();
-                        sheetHost.setVisibility(View.GONE);
+                        /* শুধু তখনই সরাব যখন এই overlay-ই এখনো বর্তমান —
+                           নতুন শিট খুলে গেলে সেটিকে মুছে ফেলা যাবে না */
+                        if (sheetHost.getChildCount() > 0 && sheetHost.getChildAt(0) == overlay) {
+                            sheetHost.removeAllViews();
+                            sheetHost.setVisibility(View.GONE);
+                        }
                     }
                 }).start();
         overlay.animate().alpha(0f).setDuration(240).start();

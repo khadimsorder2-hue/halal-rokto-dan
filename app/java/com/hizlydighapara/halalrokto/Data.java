@@ -19,7 +19,7 @@ public final class Data {
 
     public static final String APP_NAME = "হালাল রক্ত দান";
     public static final String APP_NAME_EN = "Halal Rokto Dan";
-    public static final String VERSION = "3.0.0";
+    public static final String VERSION = "3.1.0";
     public static final String ORG = "হিজলি দিঘাপাড়া যুব সংঘ";
     public static final String ORG_EN = "Hizly Dighapara JUBO Sangho";
     public static final String SINCE = "Since ২০২৬";
@@ -174,6 +174,7 @@ public final class Data {
         public List<Notif> notifications = new ArrayList<>();
         public int[] stock = new int[8]; // index of BLOOD_GROUPS
         public boolean themeDark = false, demoData = true;
+        public boolean notifOn = true;
         public String serverUrl = "";
         public long syncLast = 0;
         public String syncStatus = "off";
@@ -218,6 +219,7 @@ public final class Data {
                 if (st != null) {
                     s.themeDark = st.optBoolean("themeDark", false);
                     s.demoData = st.optBoolean("demoData", true);
+                    s.notifOn = st.optBoolean("notifOn", true);
                     s.serverUrl = st.optString("serverUrl", "");
                 }
                 JSONObject sy = o.optJSONObject("sync");
@@ -240,7 +242,8 @@ public final class Data {
             a = new JSONArray(); for (Notif n : s.notifications) a.put(n.toJson()); o.put("notifications", a);
             a = new JSONArray(); for (int i : s.stock) a.put(i); o.put("stock", a);
             o.put("settings", new JSONObject()
-                    .put("themeDark", s.themeDark).put("demoData", s.demoData).put("serverUrl", s.serverUrl));
+                    .put("themeDark", s.themeDark).put("demoData", s.demoData)
+                    .put("notifOn", s.notifOn).put("serverUrl", s.serverUrl));
             o.put("sync", new JSONObject().put("last", s.syncLast).put("status", s.syncStatus));
             prefs.edit().putString("state", o.toString()).apply();
         } catch (Exception ignored) { }
@@ -260,12 +263,12 @@ public final class Data {
         Object[][] demo = {
                 {"মোঃ রহিম মিয়া", "rahim@example.com", "01712345678", "O+", "হিজলি, বাগাতিপাড়া", 12, now - 32L * D, true},
                 {"আব্দুল করিম", "karim@example.com", "01812345679", "B+", "দিঘাপাড়া, বাগাতিপাড়া", 9, now - 105L * D, true},
-                {"মোসাঃ সুমাইয়া আক্তার", "sumaiya@example.com", "01912345680", "A+", "বাগাতিপাড়া বাজার", 7, now - 20L * D, true},
-                {"হাফেজ মাহমুদুল হাসান", "mahmud@example.com", "01612345681", "AB+", "উল্লাপাড়া রোড, বাগাতিপাড়া", 15, now - 60L * D, true},
-                {"মোঃ সোহাগ মিয়া", "sohag@example.com", "01512345682", "O-", "দিঘাপাড়া, বাগাতিপাড়া", 5, now - 15L * D, true},
+                {"মোসাঃ সুমাইয়া আক্তার", "sumaiya@example.com", "01912345680", "A+", "বাগাতিপাড়া বাজার", 7, now - 95L * D, true},
+                {"হাফেজ মাহমুদুল হাসান", "mahmud@example.com", "01612345681", "AB+", "উল্লাপাড়া রোড, বাগাতিপাড়া", 15, now - 160L * D, true},
+                {"মোঃ সোহাগ মিয়া", "sohag@example.com", "01512345682", "O-", "দিঘাপাড়া, বাগাতিপাড়া", 5, now - 100L * D, true},
                 {"নুসরাত জাহান", "nusrat@example.com", "01712345683", "B-", "বাগাতিপাড়া, নাটোর", 3, now - 88L * D, false},
-                {"মোঃ জসিম উদ্দিন", "jasim@example.com", "01812345684", "A-", "হিজলি, বাগাতিপাড়া", 6, now - 45L * D, true},
-                {"ইমরান হোসেন", "imran@example.com", "01912345685", "O+", "পাকশি রোড, বাগাতিপাড়া", 2, now - 70L * D, false},
+                {"মোঃ জসিম উদ্দিন", "jasim@example.com", "01812345684", "A-", "হিজলি, বাগাতিপাড়া", 6, now - 120L * D, true},
+                {"ইমরান হোসেন", "imran@example.com", "01912345685", "O+", "পাকশি রোড, বাগাতিপাড়া", 2, now - 170L * D, false},
                 {"মোসাঃ রিনা বেগম", "rina@example.com", "01612345686", "AB-", "দিঘাপাড়া, বাগাতিপাড়া", 4, now - 51L * D, true},
                 {"আল-আমিন শেখ", "alamin@example.com", "01512345687", "B+", "হিজলি বাজার", 8, now - 26L * D, true},
         };
@@ -369,6 +372,50 @@ public final class Data {
 
     public static int stockFor(String g) { return s.stock[stockIdx(g)]; }
     public static int stockTotal() { int t = 0; for (int i : s.stock) t += i; return t; }
+
+    /* ══ ডোনার উপলব্ধতা (স্টক বিস্তারিত) ═══════════════ */
+
+    static void sortByStrength(List<User> list) {
+        Collections.sort(list, new Comparator<User>() {
+            public int compare(User a, User b) {
+                int d = b.donationCount - a.donationCount;
+                return d != 0 ? d : b.trustScore - a.trustScore;
+            }
+        });
+    }
+
+    /** এই গ্রুপের ডোনার যারা এখনই রক্ত দিতে পারবে (কুলডাউন শেষ)। */
+    public static List<User> availableSame(String g) {
+        List<User> out = new ArrayList<>();
+        for (User u : visibleUsers())
+            if (u.bloodType.equals(g) && cooldown(u).eligible) out.add(u);
+        sortByStrength(out);
+        return out;
+    }
+
+    /** সামঞ্জস্যপূর্ণ গ্রুপের ডোনার যারা এখনই দিতে পারবে (যেমন A+ দিতে পারে A-, O+, O-)। */
+    public static List<User> availableCompat(String g) {
+        String compat = " " + compatOf(g) + " ";
+        List<User> out = new ArrayList<>();
+        for (User u : visibleUsers())
+            if (!u.bloodType.equals(g) && compat.contains(" " + u.bloodType + " ")
+                    && cooldown(u).eligible) out.add(u);
+        sortByStrength(out);
+        return out;
+    }
+
+    /** এই গ্রুপের যারা এখনো কুলডাউনে — অবশিষ্ট দিন অনুযায়ী। */
+    public static List<User> coolingSame(String g) {
+        List<User> out = new ArrayList<>();
+        for (User u : visibleUsers())
+            if (u.bloodType.equals(g) && !cooldown(u).eligible && u.lastDonationDate > 0) out.add(u);
+        Collections.sort(out, new Comparator<User>() {
+            public int compare(User a, User b) {
+                return Integer.compare(cooldown(a).days, cooldown(b).days);
+            }
+        });
+        return out;
+    }
 
     /** unfulfilled first, then newest first */
     public static List<Emergency> visibleEmergencies() {
@@ -572,6 +619,17 @@ public final class Data {
                         .put("location", e.location).put("contact", e.contact).put("notes", e.notes);
             } catch (Exception ignored) {}
             post("/api/emergency-requests", o.toString());
+        }
+
+        public static void pushChat(String channel, String senderId, String senderName, String text) {
+            if (!enabled()) return;
+            JSONObject o = new JSONObject();
+            try {
+                o.put("channel", channel).put("senderId", senderId)
+                        .put("senderName", senderName).put("text", text)
+                        .put("ts", System.currentTimeMillis());
+            } catch (Exception ignored) {}
+            post("/api/chat", o.toString());
         }
     }
 }

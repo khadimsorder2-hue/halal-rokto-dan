@@ -79,7 +79,7 @@ public final class ScrHome {
         qg.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         quickTile(c, qg, R.drawable.ic_bloodbank, "রক্তের\nস্টক", D.primaryC, D.onPrimaryC, "stock");
-        quickTile(c, qg, R.drawable.ic_people, "ডোনার\nখুঁজুন", 0xFFDCEEEE, 0xFF0F3B3B, "donors");
+        quickTile(c, qg, R.drawable.ic_chat, "চ্যাট", 0xFFDCEEEE, 0xFF0F3B3B, "chat");
         quickTile(c, qg, R.drawable.ic_add, "রক্তদান\nযোগ করুন", 0xFFFFF3CD, 0xFF5D4E00, "history");
         quickTile(c, qg, R.drawable.ic_card, "ডোনার\nকার্ড", 0xFFE8DEF8, 0xFF3A2A5E, "donorcard");
         root.addView(qg);
@@ -188,6 +188,28 @@ public final class ScrHome {
         }
         l.addView(bellWrap);
         ((LinearLayout.LayoutParams) bellWrap.getLayoutParams()).rightMargin = D.dp(6);
+
+        /* চ্যাট — আনরিড ব্যাজসহ */
+        int chatUnread = Chat.unreadTotal();
+        FrameLayout chatWrap = new FrameLayout(c);
+        ImageView chat = Ui.icon(c, R.drawable.ic_chat, 22, 0xFFFFFFFF);
+        chat.setBackground(D.ripple(D.round(D.withAlpha(0xFFFFFFFF, 44), 50), D.rippleColorLight));
+        chat.setPadding(D.dp(9), D.dp(9), D.dp(9), D.dp(9));
+        chat.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { Ui.host.go("chat", false); }
+        });
+        chatWrap.addView(chat);
+        if (chatUnread > 0) {
+            TextView cd = Ui.txt(c, Bn.bn(chatUnread), 9.5f, 0xFFFFFFFF, 700);
+            cd.setGravity(Gravity.CENTER);
+            cd.setPadding(D.dp(5), D.dp(1), D.dp(5), D.dp(2));
+            cd.setBackground(D.round(0xFFB3261E, 50));
+            cd.setElevation(D.dp(2));
+            cd.setLayoutParams(Ui.flp(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END));
+            chatWrap.addView(cd);
+        }
+        l.addView(chatWrap);
+        ((LinearLayout.LayoutParams) chatWrap.getLayoutParams()).rightMargin = D.dp(6);
 
         ImageView person = Ui.icon(c, R.drawable.ic_person, 22, 0xFFFFFFFF);
         person.setBackground(D.ripple(D.round(D.withAlpha(0xFFFFFFFF, 44), 50), D.rippleColorLight));

@@ -75,6 +75,24 @@ public final class ScrMore {
         LinearLayout menu1 = Ui.v(c);
         menu1.setPadding(D.dp(16), 0, D.dp(16), 0);
 
+        LinearLayout r0 = Ui.menuRow(c, R.drawable.ic_sos, D.errorC, D.onErrorC,
+                "জরুরি আবেদন", "রক্তের জরুরি প্রয়োজন জানান",
+                chevron(c), new Runnable() {
+                    public void run() { Ui.host.go("emergency", false); }
+                });
+        menu1.addView(r0);
+        ((LinearLayout.LayoutParams) r0.getLayoutParams()).bottomMargin = D.dp(9);
+
+        int chatUnread = Chat.unreadTotal();
+        LinearLayout r0b = Ui.menuRow(c, R.drawable.ic_chat, D.primaryC, D.onPrimaryC,
+                "চ্যাট ও মেসেজ",
+                chatUnread > 0 ? "পড়া হয়নি " + Bn.bn(chatUnread) + " টি নতুন বার্তা" : "সদস্যদের সাথে কথা বলুন",
+                chatUnread > 0 ? Ui.pill(c, Bn.bn(chatUnread), 2) : chevron(c), new Runnable() {
+                    public void run() { Ui.host.go("chat", false); }
+                });
+        menu1.addView(r0b);
+        ((LinearLayout.LayoutParams) r0b.getLayoutParams()).bottomMargin = D.dp(9);
+
         LinearLayout r1 = Ui.menuRow(c, R.drawable.ic_history, D.primaryC, D.onPrimaryC,
                 "রক্তদানের ইতিহাস", "আপনার সকল দানের রেকর্ড ও টাইমলাইন",
                 chevron(c), new Runnable() {

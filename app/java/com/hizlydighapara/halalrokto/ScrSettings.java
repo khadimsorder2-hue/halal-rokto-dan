@@ -45,6 +45,32 @@ public final class ScrSettings {
                 m1.addView(darkRow);
                 root.addView(m1);
 
+                /* নোটিফিকেশন ও ব্যাকগ্রাউন্ড */
+                root.addView(Ui.sectionHeader(c, "নোটিফিকেশন"));
+                LinearLayout m0 = Ui.v(c);
+                m0.setPadding(D.dp(16), 0, D.dp(16), 0);
+
+                LinearLayout notifRow = switchRow(c, R.drawable.ic_bell, D.primaryC, D.onPrimaryC,
+                        "নোটিফিকেশন ও ব্যাকগ্রাউন্ড সার্ভিস",
+                        Data.s.notifOn ? "চালু — জরুরি সতর্কতা, স্টক ঘাটতি ও নতুন বার্তা আসবে" : "বন্ধ — কোনো নোটিফিকেশন আসবে না",
+                        Data.s.notifOn, new CompoundButton.OnCheckedChangeListener() {
+                            public void onCheckedChanged(CompoundButton b, boolean checked) {
+                                Data.s.notifOn = checked;
+                                Data.save();
+                                Ui.host.haptic(10);
+                                if (checked) {
+                                    NotifUtil.requestPermission(Ui.host);
+                                    NotifUtil.ensureService(c);
+                                    Ui.toast("নোটিফিকেশন ও ব্যাকগ্রাউন্ড সার্ভিস চালু হয়েছে", false);
+                                } else {
+                                    NotifUtil.stopService(c);
+                                    Ui.toast("নোটিফিকেশন বন্ধ হয়েছে", false);
+                                }
+                            }
+                        });
+                m0.addView(notifRow);
+                root.addView(m0);
+
                 /* ডেটা ও সিঙ্ক */
                 root.addView(Ui.sectionHeader(c, "ডেটা ও সিঙ্ক"));
                 LinearLayout m2 = Ui.v(c);

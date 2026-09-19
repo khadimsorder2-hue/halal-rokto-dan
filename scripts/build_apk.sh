@@ -1,20 +1,25 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════
-# হালাল রক্ত দান v3.0 — 100% NATIVE Android (no WebView)
+# হালাল রক্ত দান v3.1.0 — 100% NATIVE Android (no WebView)
 # Manual toolchain: aapt2 → javac → d8 → zip → zipalign → apksigner
+# Features: চ্যাট, ব্যাকগ্রাউন্ড সার্ভিস, নোটিফিকেশন,
+#           স্টক কার্ডে ক্লিকে উপলব্ধ ডোনার, ৬-ট্যাব নেভিগেশন
 # ═══════════════════════════════════════════════════════════
 set -e
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"/android-build
-APP="$(dirname "$0")/../app"
-BUILD=$ROOT/build-v3
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP="$SCRIPT_DIR/../app"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"/android-build
+BUILD=$ROOT/build-v31
 SDK=$ROOT/sdk
 BT=$SDK/build-tools/35.0.0
-PLATFORM=$SDK/platforms/android-34/android.jar
-JDK=/home/z/my-project/android-build/jdk
-KEYSTORE=$ROOT/halal-rokto-v3-release.keystore
+PLATFORM=$SDK/platforms/android-35/android.jar
+JDK=$ROOT/jdk
+export JAVA_HOME=$JDK
+export PATH=$JDK/bin:$PATH
+KEYSTORE=$ROOT/halal-rokto-release.keystore
 KS_PASS="halalrokto2026"
-OUT_APK=$ROOT/halal-rokto-dan-v3.0.0-native-release.apk
+OUT_APK=$ROOT/halal-rokto-dan-v3.1.0-native-release.apk
 
 echo "── [1/8] aapt2 compile resources"
 rm -rf "$BUILD" && mkdir -p "$BUILD/gen" "$BUILD/classes" "$BUILD/dex"
@@ -30,13 +35,13 @@ $BT/aapt2 link \
   --min-sdk-version 26 \
   --target-sdk-version 34 \
   --auto-add-overlay \
-  --version-code 3 \
-  --version-name 3.0.0
+  --version-code 4 \
+  --version-name 3.1.0
 
-echo "── [3/8] javac compile (native Java, no WebView)"
+echo "── [3/8] javac compile (native Java, zero dependency)"
 find "$BUILD/gen" -name "*.java" > "$BUILD/sources.txt"
 find "$APP/java" -name "*.java" >> "$BUILD/sources.txt"
-wc -l $(cat "$BUILD/sources.txt") | tail -1
+echo "sources: $(wc -l < "$BUILD/sources.txt") files"
 $JDK/bin/javac \
   -source 11 -target 11 \
   -classpath "$PLATFORM" \
@@ -71,7 +76,6 @@ fi
 $BT/apksigner sign \
   --ks "$KEYSTORE" \
   --ks-pass "pass:$KS_PASS" \
-  --key-pass "pass:$KS_PASS" \
   --ks-key-alias halalrokto \
   --out "$OUT_APK" \
   "$BUILD/aligned.apk"

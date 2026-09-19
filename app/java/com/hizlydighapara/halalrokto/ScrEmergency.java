@@ -173,11 +173,16 @@ public final class ScrEmergency {
     }
 
     static void newEmergencySheet(final Context c, final Runnable[] refresh) {
+        newEmergencySheet(c, refresh, null);
+    }
+
+    /** পূর্বনির্ধারিত গ্রুপসহ নতুন জরুরি আবেদন (স্টক বিস্তারিত থেকে)। */
+    static void newEmergencySheet(final Context c, final Runnable[] refresh, final String presetGroup) {
         Ui.sheet(c, "নতুন জরুরি আবেদন", R.drawable.ic_sos, true, new Ui.SheetCallback() {
             public void onSheet(final LinearLayout body, final Runnable close) {
                 final Ui.Field fPatient = Ui.field(c, "রোগীর নাম *", Ui.F_TEXT, null, "যেমন: জনাব আব্দুল জলিল (৬২)");
-                final AtomicReference<String> bgRef = new AtomicReference<>(null);
-                LinearLayout bgGrid = Ui.bloodGroupGrid(c, null, bgRef);
+                final AtomicReference<String> bgRef = new AtomicReference<>(presetGroup);
+                LinearLayout bgGrid = Ui.bloodGroupGrid(c, presetGroup, bgRef);
                 final Ui.Field fUnits = Ui.field(c, "কত ব্যাগ প্রয়োজন *", Ui.F_NUMBER, "1", "যেমন: 2");
                 final Ui.Field fHospital = Ui.field(c, "হাসপাতালের নাম *", Ui.F_TEXT, null, "যেমন: নাটোর সদর হাসপাতাল");
                 final Ui.Field fLocation = Ui.field(c, "লোকেশন (ঐচ্ছিক)", Ui.F_TEXT, null, "যেমন: নাটোর সদর");
